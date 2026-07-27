@@ -1,0 +1,120 @@
+// Prisma schema — Yamal888 Shop (SQL Server)
+// หมายเหตุ:
+//  - SQL Server ไม่รองรับ enum และ scalar list ของ Prisma
+//    จึงใช้ String สำหรับ role/status/paymentMethod (ตรวจค่าใน DTO)
+//    และเก็บ images/tags เป็น JSON string (แปลงเป็น array ใน service)
+//  - คอลัมน์ที่เป็น PK/FK/unique ต้องจำกัดความยาว (@db.NVarChar) เพราะ
+//    index key ของ SQL Server จำกัดที่ 900 ไบต์ (ค่า default NVarChar(1000) จะเกิน)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.NVarChar(50)
+  name      String
+  email     String   @unique @db.NVarChar(255)
+  phone     String?
+  password  String
+  role      String   @default("customer") @db.NVarChar(20) // customer | admin
+  createdAt DateTime @default(now())
+
+  orders Order[]
+}
+
+model Category {
+  id   String @id @default(uuid()) @db.NVarChar(50)
+  name String
+  slug String @unique @db.NVarChar(255)
+  icon String
+
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(uuid()) @db.NVarChar(50)
+  name        String
+  slug        String   @unique @db.NVarChar(255)
+  description String   @db.NVarChar(Max)
+  price       Float
+  salePrice   Float?
+  categoryId  String   @db.NVarChar(50)
+  images      String   @db.NVarChar(Max) // JSON array
+  rating      Float    @default(5)
+  reviewCount Int      @default(0)
+  stock       Int      @default(0)
+  brand       String
+  tags        String   @db.NVarChar(Max) // JSON array
+  createdAt   DateTime @default(now())
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  orderItems OrderItem[]
+}
+
+model Order {
+  id            String   @id @db.NVarChar(50) // เลขแบบกำหนดเอง เช่น ORD-20260727-4821
+  userId        String   @db.NVarChar(50)
+  customerName  String
+  subtotal      Float
+  shippingFee   Float
+  total         Float
+  status        String   @default("pending_payment") @db.NVarChar(30)
+  paymentMethod String   @db.NVarChar(30)
+  slipUploaded  Boolean  @default(false)
+
+  // ที่อยู่จัดส่ง (flatten)
+  addrFullName   String
+  addrPhone      String
+  addrAddress    String @db.NVarChar(Max)
+  addrDistrict   String
+  addrProvince   String
+  addrPostalCode String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  issues        OrderIssue[]
+  statusHistory StatusEvent[]
+}
+
+model OrderItem {
+  id        String @id @default(uuid()) @db.NVarChar(50)
+  orderId   String @db.NVarChar(50)
+  productId String @db.NVarChar(50)
+  slug      String @db.NVarChar(255)
+  name      String
+  image     String @db.NVarChar(Max)
+  price     Float
+  quantity  Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model OrderIssue {
+  id        String   @id @default(uuid()) @db.NVarChar(50)
+  orderId   String   @db.NVarChar(50)
+  topic     String
+  detail    String   @db.NVarChar(Max)
+  status    String   @default("open") @db.NVarChar(20) // open | resolved
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model StatusEvent {
+  id      String   @id @default(uuid()) @db.NVarChar(50)
+  orderId String   @db.NVarChar(50)
+  status  String   @db.NVarChar(30)
+  note    String?
+  at      DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
